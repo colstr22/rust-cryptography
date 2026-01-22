@@ -1,7 +1,7 @@
 use std::ops::Mul;
 
 use num_primes::Generator;
-use crypto_bigint::{NonZero, U4096, U2048, Random, rand_core::OsRng};
+use crypto_bigint::{NonZero, U4096, Random, rand_core::OsRng};
 
 const BITS : usize = 2048;
 const RADIX : u32 = 16;
