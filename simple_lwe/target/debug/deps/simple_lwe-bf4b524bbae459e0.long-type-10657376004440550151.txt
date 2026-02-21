@@ -1,0 +1,8 @@
+Matrix<_, Dyn, Const<1>, VecStorage<_, Dyn, Const<1>>>: From<Map<std::slice::Iter<'_, u8>, {closure@src/main.rs:53:36: 53:42}>>
+Matrix<T, <Const<D> as DimNameAdd<Const<1>>>::Output, <Const<D> as DimNameAdd<Const<1>>>::Output, <DefaultAllocator as nalgebra::allocator::Allocator<<Const<D> as DimNameAdd<Const<1>>>::Output, <Const<D> as DimNameAdd<Const<1>>>::Output>>::Buffer<T>>
+Matrix<T, <D as DimNameAdd<Const<1>>>::Output, Const<1>, <DefaultAllocator as nalgebra::allocator::Allocator<<D as DimNameAdd<Const<1>>>::Output>>::Buffer<T>>
+From<Matrix<T, Const<R>, Const<C>, ViewStorageMut<'_, T, Const<R>, Const<C>, RStride, CStride>>>
+From<[Matrix<<T as SimdValue>::Element, R, C, <DefaultAllocator as nalgebra::allocator::Allocator<R, C>>::Buffer<<T as SimdValue>::Element>>; 16]>
+From<[Matrix<<T as SimdValue>::Element, R, C, <DefaultAllocator as nalgebra::allocator::Allocator<R, C>>::Buffer<<T as SimdValue>::Element>>; 2]>
+From<[Matrix<<T as SimdValue>::Element, R, C, <DefaultAllocator as nalgebra::allocator::Allocator<R, C>>::Buffer<<T as SimdValue>::Element>>; 4]>
+From<[Matrix<<T as SimdValue>::Element, R, C, <DefaultAllocator as nalgebra::allocator::Allocator<R, C>>::Buffer<<T as SimdValue>::Element>>; 8]>
