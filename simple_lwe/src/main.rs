@@ -1,5 +1,3 @@
-use std::io::Bytes;
-
 use nalgebra::DMatrix;
 use nalgebra::DVector;
 use rand::Rng;
@@ -12,18 +10,21 @@ fn main() {
     let text = "Hello, world!";
     println!("Message: {}", text);
     let m: DVector<i64> = string_to_poly_coeffs(text, N);
-    // println!("Polynomial Form (len {})", m.len());
-
     let (a, t, s) = keygen();
-    // println!("A:(dim {}*{})\ns:(len {})\nt:(len {})", a.nrows(), a.ncols(), s.len(), t.len());
 
-    let (u, v) = encrypt(&a, &t, &m);
-    // println!("v:({})\nu:({}x{})", v.len(), u.nrows(), u.ncols());
+    // Encrypt each bit separately
+    let ciphertexts: Vec<(DVector<i64>, i64)> = m.iter()
+        .map(|&bit| encrypt_bit(&a, &t, bit))
+        .collect();
 
-    let decoded_m = decrypt(&u, &v, &s);
-    // println!("Decoded Polynomial {}", decoded_m);
+    // Decrypt each bit separately
+    let decoded_bits: Vec<i64> = ciphertexts.iter()
+        .map(|(u, v)| decrypt_bit(u, *v, &s))
+        .collect();
 
+    let decoded_m = DVector::from_vec(decoded_bits);
     let diff: i64 = m.iter().zip(decoded_m.iter()).map(|(a, b)| (a - b).abs()).sum();
+
     println!("Bits wrong: {}", diff);
     assert_eq!(m, decoded_m);
 
@@ -50,12 +51,12 @@ fn poly_coeffs_to_string(poly: DVector<i64>) -> String {
     let mut bytes : Vec<u8> = vec![0; byte_array_length];
     for (i , &byte ) in poly.iter().enumerate() {
         let byte_index : usize = ((i as f64) / (8 as f64)).floor() as usize ;
-        bytes[byte_index] ^= (byte as u8) <<7-(i % 8);
+        bytes[byte_index] ^= (byte as u8) << 7-(i % 8);
     }
     bytes.iter().map(|x : &u8| *x as char).collect::<String>()
 }
 
-fn small_error(rng: &mut impl Rng) -> i64 {
+fn small_vector(rng: &mut impl Rng) -> i64 {
     Uniform::new_inclusive(-2i64, 2i64).sample(rng)
 }
 
@@ -66,58 +67,43 @@ fn keygen() -> (DMatrix<i64>, DVector<i64>, DVector<i64>) {
     // Public Matrix
     let a: DMatrix<i64> = DMatrix::from_fn(N, N, |_, _| coeff_range.sample(&mut rng));
     // Secret Vector
-    let s: DVector<i64> = DVector::from_fn(N, |_, _| small_error(&mut rng));
+    let s: DVector<i64> = DVector::from_fn(N, |_, _| small_vector(&mut rng));
     // Original Perturbation
-    let e: DVector<i64> = DVector::from_fn(N, |_, _| small_error(&mut rng));
+    let e: DVector<i64> = DVector::from_fn(N, |_, _| small_vector(&mut rng));
     // Public Vector
     let t: DVector<i64> = DVector::from_fn(N, |row, _| {
         let dot: i64 = (0..N).map(|k| a[(row, k)] * s[k]).sum();
-        dot + e[row]  // NO rem_euclid here
+        dot + e[row]
     });
 
     (a, t, s)
 }
 
-fn encrypt(a: &DMatrix<i64>, t: &DVector<i64>, message: &DVector<i64>) -> (DMatrix<i64>, DVector<i64>) {
+fn encrypt_bit(a: &DMatrix<i64>, t: &DVector<i64>, bit: i64) -> (DVector<i64>, i64) {
+    // bit is 0 or 1, mapped to 0 or Q/2
     let mut rng = rand::thread_rng();
-    let m_len = message.len();
 
-    let r: DMatrix<i64> = DMatrix::from_fn(N, m_len, |_, _| {
-        Uniform::new_inclusive(0i64, 1i64).sample(&mut rng)
+    let r: DVector<i64> = DVector::from_fn(N, |_, _| {
+        Uniform::new_inclusive(-1i64, 1i64).sample(&mut rng)
     });
-    let e1: DMatrix<i64> = DMatrix::from_fn(N, m_len, |_, _| small_error(&mut rng));
-    let e2: DVector<i64> = DVector::from_fn(m_len, |_, _| small_error(&mut rng));
+    let e1: DVector<i64> = DVector::from_fn(N, |_, _| small_vector(&mut rng));
+    let e2: i64 = small_vector(&mut rng);
 
     // u = A^T * r + e1 mod Q
-    let u: DMatrix<i64> = DMatrix::from_fn(N, m_len, |row, col| {
-        let dot: i64 = (0..N).map(|k| a[(k, row)] * r[(k, col)]).sum(); // a[(k,row)] = A^T[(row,k)]
-        (dot + e1[(row, col)]).rem_euclid(Q)
+    let u: DVector<i64> = DVector::from_fn(N, |row, _| {
+        let dot: i64 = (0..N).map(|k| a[(k, row)] * r[k]).sum();
+        (dot + e1[row]).rem_euclid(Q)
     });
 
-    // v = t·r + e2 + (Q/2)*m mod Q
-    let v: DVector<i64> = DVector::from_fn(m_len, |i, _| {
-        let r_col = r.column(i);
-        let dot: i64 = t.iter().zip(r_col.iter()).map(|(&ti, &ri)| ti * ri).sum();
-        (dot + e2[i] + (Q / 2) * message[i]).rem_euclid(Q)
-    });
+    // v = t·r + e2 + (Q/2)*bit mod Q
+    let dot: i64 = t.iter().zip(r.iter()).map(|(&ti, &ri)| ti * ri).sum();
+    let v: i64 = (dot + e2 + (Q / 2) * bit).rem_euclid(Q);
 
     (u, v)
 }
 
-fn decrypt(u: &DMatrix<i64>, v: &DVector<i64>, s: &DVector<i64>) -> DVector<i64> {
-    // Compute Errorless solution, find distance (including wraparound) 
-    // Maybe try centered-residue representation for branchless?
-
-    let m_len = v.len();
-    DVector::from_fn(m_len, |i, _| {
-        let u_col = u.column(i);
-        let dot: i64 = s.iter().zip(u_col.iter()).map(|(&si, &ui)| si * ui).sum();
-        let d = (v[i] - dot).rem_euclid(Q);
-        
-        // Distance to 0, accounting for wraparound in [0, Q)
-        let dist_to_zero = d.min(Q - d);
-        let dist_to_half = (d - Q / 2).abs();
-        
-        if dist_to_half < dist_to_zero { 1 } else { 0 }
-    })
+fn decrypt_bit(u: &DVector<i64>, v: i64, s: &DVector<i64>) -> i64 {
+    let dot: i64 = u.iter().zip(s.iter()).map(|(&ui, &si)| ui * si).sum();
+    let d = (v - dot).rem_euclid(Q);
+    if (d - Q / 2).abs() < Q / 4 { 1 } else { 0 }
 }
